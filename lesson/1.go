@@ -1,5 +1,0 @@
-package lesson
-
-func One() {
-
-}
