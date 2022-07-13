@@ -34,9 +34,8 @@ func main() {
 		go func() {
 			defer wg.Done()
 
-			// экслючивная блокировка пока не завершится запись
 			time.Sleep(time.Nanosecond)
-
+			// экслючивная блокировка пока не завершится запись
 			mu.Lock()
 			count++	
 			mu.Unlock()
