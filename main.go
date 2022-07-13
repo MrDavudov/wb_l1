@@ -1,91 +1,86 @@
 package main
 
-// Задание 3
-// Дана последовательность чисел: 2,4,6,8,10. Найти сумму их квадратов(22+32+42….)
-// с использованием конкурентных вычислений.
+// Задание 4
+// Реализовать постоянную запись данных в канал (главный поток). Реализовать набор
+// из N воркеров, которые читают произвольные данные из канала и выводят в stdout.
+// Необходима возможность выбора количества воркеров при старте.
+// Программа должна завершаться по нажатию Ctrl+C. Выбрать и обосновать способ завершения
+// работы всех воркеров.
 
 import (
+	"context"
 	"fmt"
+	"log"
+	"math/rand"
+	"os"
+	"os/signal"
+	"strconv"
 	"sync"
-	"sync/atomic"
+	"syscall"
 	"time"
 )
 
-// useAtomic использует возможности пакета sync.Atomic.
-func useAtomic(numbers []int) int {
-	var result int64
-	// используем sync.WaitGroup, чтобы дождаться окончания работы воркеров.
-	wg := new(sync.WaitGroup)
-	for _, num := range numbers {
+// chWriter запускает воркеры и пишет случайные числа в канал, дожидаясь отмены контекста.
+// Выполняется в главном потоке.
+//
+// Остановка воркеров реализована через закрытие канала. Это наилучший вариант т.к.
+// не нужно создавать новых сущностей для достижения результата. В качестве альтернативы
+// можно было бы передать общий контекст воркерам, но в этом случае трудно добиться завершения обработки
+// всех сгенерированных данных.
+func chWriter(ctx context.Context, n int) {
+	ch := make(chan int, 5)
+	wg := &sync.WaitGroup{}
+	// запускаем воркеры
+	for i := 1; i <= n; i++ {
 		wg.Add(1)
-		// передаём число в качестве аргумента горутине, чтобы избежать data race.
-		go func(n int) {
-			// atomic гарантирует, что не будет гонки данных
-			atomic.AddInt64(&result, int64(n*n))
-			wg.Done()
-		}(num)
+		go worker(i, ch, wg)
 	}
-	// ждём окончания
-	wg.Wait()
-	return int(result)
+	for {
+		select {
+		default:
+			ch <- rand.Int()
+		case <-ctx.Done(): // контекст завершён!
+			close(ch) // закрытие канала служит сигналом остановки одновременно всем воркерам
+			wg.Wait() // дожидаемся, пока воркеры завершат работу
+			return
+		}
+	}
 }
 
-// useChannels использует передачу данных и результата по каналам.
-// Оставляем возможность задать размер буфера канала для экспериментов.
-func useChannels(numbers []int, chSize int) int {
-	wg := new(sync.WaitGroup)
-
-	chSqr := make(chan int, chSize) // канал для передачи квадратов
-	chResult := make(chan int)      // канал для результата
-
-	for _, num := range numbers {
-		wg.Add(1)
-		go func(n int) {
-			// передаем квадрат в канал
-			chSqr <- n * n
-			wg.Done()
-		}(num)
+// worker читает данные из канала и выводит их в stdout.
+func worker(i int, ch chan int, wg *sync.WaitGroup) {
+	log.Printf("Worker %d started", i)
+	for number := range ch { // закрытие канала остановит все запущенные воркеры
+		time.Sleep(time.Millisecond * 500) // задержка для наглядности
+		fmt.Println(number)
 	}
-	// эта горутина собирает квадраты из канала и складывает их
-	go func() {
-		var result int
-		// цикл завершится, когда канал будет закрыт
-		for num := range chSqr {
-			result += num
-		}
-		chResult <- result
-	}()
-	// ждём окончания
-	wg.Wait()
-	// закрытие канала даёт сигнал горутине послать результат
-	close(chSqr)
-	return <-chResult
+	log.Printf("Worker %d stopped", i)
+	wg.Done()
 }
 
 func main() {
-	// выполняем задание
-	nums := []int{2, 4, 6, 8, 10}
-	fmt.Println(useAtomic(nums), useChannels(nums, 5))
-
-	// сравним скорость работы двух функций
-	//
-	// Результаты эксперимента показывают, что буфер канала ожидаемо становится узким местом,
-	// т.к. горутинам приходится ждать возможности записать результат в канал.
-	// Если размер буфера канала равен числу обрабатываемых элементов, то разницы в скорости
-	// не обнаруживается. Но буфер канала забирает ощутимо больше памяти, поэтому подход с использованием
-	// пакета atomic является более эффективным в данном случае.
-	const sliceSize = 5000000
-	const chanSize = 5000000
-	numbers := make([]int, 0, sliceSize)
-	for i := 1; i <= sliceSize; i++ {
-		numbers = append(numbers, i*2)
+	if len(os.Args) != 2 {
+		fmt.Println("Usage:\n\ttask04 <n> - where n is number of workers")
+		os.Exit(1)
 	}
-	start := time.Now()
-	atomicRes := useAtomic(numbers)
-	t1 := time.Since(start)
-	start = time.Now()
-	chanRes := useChannels(numbers, chanSize)
-	t2 := time.Since(start)
-	fmt.Printf("useAtomic:\tresult: %d, time: %v\n", atomicRes, t1)
-	fmt.Printf("useChannels:\tresult: %d, time: %v\n", chanRes, t2)
+	arg := os.Args[1]
+	numOfWorkers, err := strconv.Atoi(arg)
+	if err != nil || numOfWorkers < 1 {
+		fmt.Printf("wrong number of workers: %s\n", arg)
+		os.Exit(1)
+	}
+	// создаём контекст с отменой для плавного завершения
+	ctx, cancel := context.WithCancel(context.Background())
+	// подписываемся на сигнал остановки от ОС
+	sigint := make(chan os.Signal, 1)
+	signal.Notify(sigint, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	// эта горутина ждёт сигнала от ОС и завершает контекст, давая тем самым сигнал остановить работу
+	go func() {
+		<-sigint
+		log.Println("Shutting down...")
+		cancel()
+	}()
+	chWriter(ctx, numOfWorkers)
+	log.Println("Bye!")
+	os.Exit(0)
 }

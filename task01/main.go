@@ -7,21 +7,35 @@ import "fmt"
 // Реализовать встраивание методов в структуре Action от родительской
 // структуры Human (аналог наследования).
 
+type HumanAction interface {
+	toSpeak()
+}
+
 type Human struct {
 	Name	string
 	Age		int
 }
 
-func (n *Human) newName() Human {
-	n.Name = "Devid"
-	return n
+type Action struct {
+	Human
+	Speak	string
 }
 
-func One() {
-	human := Human{
-		"Jack",
-		12,
-	}
-	newName(human)
-	fmt.Printf("New name: %s", human.Name)
+func (a *Action) toSpeak(msg string) Action {
+	a.Speak = msg
+	return *a
+}
+
+func main() {
+	person := Action{Human{Name: "Rick", Age: 89}, "Hi"}
+	fmt.Printf("Type: %T Value: %#v\n", person, person)
+
+	person.toSpeak("Hello")
+	fmt.Printf("Type: %T Value: %#v\n", person, person)
+
+	person2 := Action{Human{Name: "Morti", Age: 15}, "Damn"}
+	fmt.Printf("Type: %T Value: %#v\n", person2, person2)
+
+	person2.toSpeak("Happy")
+	fmt.Printf("Type: %T Value: %#v\n", person2, person2)
 }
