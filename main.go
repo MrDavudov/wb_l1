@@ -2,25 +2,13 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
-	"time"
+	"reflect"
 )
 
 
-var pool = "ABCDE"
-
-
-// Generate a random string of A-Z chars with len = l
-func randomString(l int) string {
-bytes := make([]byte, l)
-for i := 0; i < l; i++ {
-bytes[i] = pool[rand.Intn(len(pool))]
-}
-return string(bytes)
-}
-
-
 func main() {
-rand.Seed(time.Now().UnixNano())
-fmt.Println(randomString(5))
+	var x interface{} = map[int]int{1: 2}
+	xType := reflect.TypeOf(x)
+	// xValue := reflect.ValueOf(x)
+	fmt.Println(xType)
 }

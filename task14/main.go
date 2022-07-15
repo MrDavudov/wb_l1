@@ -10,14 +10,11 @@ import (
 // тип переменной: int, string, bool, channel из переменной типа
 // interface{}.
 
-func main() {
-	var ch chan int
-	ch <- 1
-
+func main() {	
 	GetType(2.1)
 	GetType("Hi")
 	GetType(3)
-	GetType(<-ch)
+	GetType(make(chan struct{}))
 }
 
 func GetType(v interface{}) {
